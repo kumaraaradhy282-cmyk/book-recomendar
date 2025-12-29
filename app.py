@@ -11,18 +11,25 @@ st.set_page_config(
 )
 
 st.title("📚 Book Recommendation Engine")
-st.write("Select a book and get similar book recommendations.")
+st.write("Select a book to get similar book recommendations.")
 
 # ---------------- LOAD DATA ----------------
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def load_data():
-    return pd.read_csv("books.csv")
+    df = pd.read_csv("books.csv")
+    df = df.fillna("")  # prevent warnings/errors
+    return df
 
 books = load_data()
 
-# ---------------- DATA PROCESSING ----------------
-books["content"] = books["genre"] + " " + books["description"]
+# ---------------- PREPROCESSING ----------------
+books = books.copy()  # avoid pandas warnings
+books["content"] = (
+    books["genre"].astype(str) + " " +
+    books["description"].astype(str)
+)
 
+# ---------------- VECTORIZATION ----------------
 vectorizer = TfidfVectorizer(stop_words="english")
 tfidf_matrix = vectorizer.fit_transform(books["content"])
 
@@ -33,28 +40,23 @@ book_titles = books["title"].tolist()
 selected_book = st.selectbox("Choose a book", book_titles)
 
 # ---------------- RECOMMENDATION FUNCTION ----------------
-def recommend_books(book_title, num_recommendations=5):
-    index = books[books["title"] == book_title].index[0]
-    similarity_scores = list(enumerate(similarity_matrix[index]))
+def recommend_books(book_title, top_n=5):
+    book_index = books.index[books["title"] == book_title][0]
+    similarity_scores = list(enumerate(similarity_matrix[book_index]))
     similarity_scores = sorted(similarity_scores, key=lambda x: x[1], reverse=True)
-    top_books = similarity_scores[1:num_recommendations+1]
 
-    recommendations = []
-    for i, score in top_books:
-        recommendations.append({
-            "title": books.iloc[i]["title"],
-            "author": books.iloc[i]["author"],
-            "genre": books.iloc[i]["genre"]
-        })
-    return recommendations
+    recommended_indices = [i for i, _ in similarity_scores[1:top_n + 1]]
 
-if st.button("Recommend"):
-    results = recommend_books(selected_book)
+    return books.loc[recommended_indices, ["title", "author", "genre"]]
+
+# ---------------- OUTPUT ----------------
+if st.button("Recommend Books"):
+    recommendations = recommend_books(selected_book)
 
     st.subheader("📖 Recommended Books")
-    for book in results:
+    for _, row in recommendations.iterrows():
         st.markdown(
-            f"**{book['title']}**  \n"
-            f"Author: {book['author']}  \n"
-            f"Genre: {book['genre']}"
+            f"**{row['title']}**  \n"
+            f"Author: {row['author']}  \n"
+            f"Genre: {row['genre']}"
         )
